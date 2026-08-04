@@ -46,6 +46,7 @@ WebUI 使用选定机器人的 `sendMessage(channelId, content, guildId)` 推送
 | `pollInterval` | `300000` | RSS 检查间隔，单位为毫秒，最短 10 秒。 |
 | `requestTimeout` | `30000` | RSS 请求超时时间，单位为毫秒，最短 1 秒。 |
 | `userAgent` | 桌面 Chrome User-Agent | 请求 RSS 时使用的 User-Agent，默认模拟桌面 Chrome 浏览器。 |
+| `maxEntityExpansions` | `10000` | 单个 Feed 允许处理的最大 XML 实体数量，范围为 100 至 100000。 |
 | `maxItemsPerUpdate` | `8` | 单次检查合并推送的最大文章数，范围为 1 至 50。 |
 | `includeSummary` | `true` | 是否在推送中包含文章摘要。 |
 | `maxSummaryLength` | `500` | 单篇摘要的最大字符数；设为 `0` 时不发送摘要。 |

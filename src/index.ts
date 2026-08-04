@@ -12,6 +12,7 @@ export const inject = {
 const SUBSCRIPTION_TABLE = 'feedluna.subscription' as const
 const PREVIEW_ITEM_LIMIT = 20
 const PREVIEW_SUMMARY_LENGTH = 1000
+const DEFAULT_MAX_ENTITY_EXPANSIONS = 10000
 
 export interface Config {
   pollInterval: number
@@ -22,6 +23,7 @@ export interface Config {
   pushInitialItems: boolean
   maxSeenIds: number
   userAgent: string
+  maxEntityExpansions: number
 }
 
 export const Config: Schema<Config> = Schema.intersect([
@@ -41,6 +43,11 @@ export const Config: Schema<Config> = Schema.intersect([
       .max(256)
       .default('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36')
       .description('请求 RSS 时使用的 User-Agent，默认模拟桌面 Chrome 浏览器。'),
+    maxEntityExpansions: Schema.natural()
+      .min(100)
+      .max(100000)
+      .default(DEFAULT_MAX_ENTITY_EXPANSIONS)
+      .description('单个 Feed 允许处理的最大 XML 实体数量，用于限制异常内容的资源消耗。'),
   }).description('请求设置'),
   Schema.object({
     maxItemsPerUpdate: Schema.natural()
@@ -147,15 +154,6 @@ declare module '@koishijs/plugin-console' {
   }
 }
 
-const parser = new XMLParser({
-  ignoreAttributes: false,
-  attributeNamePrefix: '@_',
-  textNodeName: '#text',
-  cdataPropName: '__cdata',
-  trimValues: true,
-  processEntities: { maxTotalExpansions: 10000 },
-})
-
 function asObject(value: unknown): XmlObject | undefined {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as XmlObject : undefined
 }
@@ -253,7 +251,20 @@ function itemId(title: string, date: string, guid: string, link: string): string
   return createHash('sha256').update(`${title}\n${date}`).digest('hex')
 }
 
-export function parseFeed(xml: string, feedUrl: string, maxSummaryLength = 500): FeedSnapshot {
+export function parseFeed(
+  xml: string,
+  feedUrl: string,
+  maxSummaryLength = 500,
+  maxEntityExpansions = DEFAULT_MAX_ENTITY_EXPANSIONS,
+): FeedSnapshot {
+  const parser = new XMLParser({
+    ignoreAttributes: false,
+    attributeNamePrefix: '@_',
+    textNodeName: '#text',
+    cdataPropName: '__cdata',
+    trimValues: true,
+    processEntities: { maxTotalExpansions: maxEntityExpansions },
+  })
   const document = parser.parse(xml) as XmlObject
   const rss = asObject(document.rss)
   const atom = asObject(document.feed)
@@ -411,7 +422,7 @@ export function apply(ctx: Context, config: Config) {
         'User-Agent': config.userAgent,
       },
     })
-    return parseFeed(String(xml), url, maxSummaryLength)
+    return parseFeed(String(xml), url, maxSummaryLength, config.maxEntityExpansions)
   }
 
   function getBot(target: SubscriptionTarget) {

@@ -77,6 +77,10 @@
                 <el-form-item label="User-Agent">
                   <el-input v-model="configDraft.userAgent" maxlength="256" show-word-limit />
                 </el-form-item>
+                <el-form-item label="最大 XML 实体数量">
+                  <el-input-number v-model="configDraft.maxEntityExpansions" :min="100" :max="100000" :step="1000" :precision="0" controls-position="right" />
+                  <div class="form-hint">限制单个 Feed 的 XML 实体处理数量，默认 10000。</div>
+                </el-form-item>
               </el-form>
             </section>
 
@@ -252,6 +256,7 @@ interface FeedLunaConfig {
   pollInterval: number
   requestTimeout: number
   userAgent: string
+  maxEntityExpansions: number
   maxItemsPerUpdate: number
   includeSummary: boolean
   maxSummaryLength: number
@@ -475,6 +480,7 @@ function validateConfig(config: FeedLunaConfig) {
   if (!natural(config.pollInterval) || config.pollInterval < 10000) return '检查间隔不能小于 10000 毫秒。'
   if (!natural(config.requestTimeout) || config.requestTimeout < 1000) return '请求超时不能小于 1000 毫秒。'
   if (!config.userAgent.trim() || config.userAgent.length > 256) return 'User-Agent 必须为 1 至 256 个字符。'
+  if (!natural(config.maxEntityExpansions) || config.maxEntityExpansions < 100 || config.maxEntityExpansions > 100000) return '最大 XML 实体数量必须在 100 至 100000 之间。'
   if (!natural(config.maxItemsPerUpdate) || config.maxItemsPerUpdate < 1 || config.maxItemsPerUpdate > 50) return '单次最多合并文章必须在 1 至 50 之间。'
   if (!natural(config.maxSummaryLength) || config.maxSummaryLength > 5000) return '单篇摘要最大字符数必须在 0 至 5000 之间。'
   if (!natural(config.maxSeenIds) || config.maxSeenIds < 50 || config.maxSeenIds > 5000) return '保留文章 ID 数量必须在 50 至 5000 之间。'
@@ -572,6 +578,7 @@ onMounted(() => {
 }
 
 .field-grid :deep(.el-input-number),
+.request-settings :deep(.el-input-number),
 .state-settings :deep(.el-input-number) {
   width: 100%;
 }
