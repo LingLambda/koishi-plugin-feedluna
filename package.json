@@ -1,0 +1,61 @@
+{
+  "name": "koishi-plugin-feedluna",
+  "description": "订阅 RSS 更新并推送到群聊",
+  "version": "0.0.1",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LingLambda/koishi-plugin-feedluna.git"
+  },
+  "bugs": {
+    "url": "https://github.com/LingLambda/koishi-plugin-feedluna/issues"
+  },
+  "homepage": "https://github.com/LingLambda/koishi-plugin-feedluna#readme",
+  "main": "lib/index.js",
+  "typings": "lib/index.d.ts",
+  "files": [
+    "lib",
+    "dist"
+  ],
+  "license": "MIT",
+  "keywords": [
+    "chatbot",
+    "koishi",
+    "plugin",
+    "rss",
+    "feed"
+  ],
+  "dependencies": {
+    "fast-xml-parser": "^4.5.7"
+  },
+  "devDependencies": {
+    "@koishijs/client": "^5.30.4",
+    "@koishijs/plugin-console": "^5.30.4",
+    "koishi": "^4.18.7",
+    "typescript": "^5.6.2"
+  },
+  "peerDependencies": {
+    "@koishijs/plugin-console": "^5.30.4",
+    "koishi": "^4.18.7"
+  },
+  "peerDependenciesMeta": {
+    "@koishijs/plugin-console": {
+      "optional": true
+    }
+  },
+  "koishi": {
+    "description": {
+      "zh": "订阅 RSS 更新并合并推送到群聊"
+    },
+    "service": {
+      "required": [
+        "database",
+        "http"
+      ],
+      "optional": [
+        "console"
+      ]
+    },
+    "browser": true,
+    "icon": "mdi:rss"
+  }
+}

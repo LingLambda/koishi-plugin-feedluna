@@ -1,0 +1,9 @@
+tsconfig.tsbuildinfo
+
+node_modules/
+.env
+.env.*
+.DS_Store
+cache/
+data/
+temp/
