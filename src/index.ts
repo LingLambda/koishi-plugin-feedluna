@@ -153,6 +153,7 @@ const parser = new XMLParser({
   textNodeName: '#text',
   cdataPropName: '__cdata',
   trimValues: true,
+  processEntities: { maxTotalExpansions: 10000 },
 })
 
 function asObject(value: unknown): XmlObject | undefined {
