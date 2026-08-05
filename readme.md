@@ -8,7 +8,7 @@
 feedluna.sub https://example.com/feed.xml
 ```
 
-默认情况下，插件首次订阅时只记录当前已有文章，不会立即推送历史内容。之后检测到新文章时，会将同一轮轮询中的更新合并后发送到订阅群。可通过 `pushInitialItems` 调整首次订阅行为。
+默认情况下，插件首次订阅时只记录当前已有文章，不会立即推送。之后检测到新文章时，会将同一轮轮询中的更新合并后发送到订阅群。可通过 `pushInitialItems` 在首次订阅后推送最新文章，或通过 `pushAllInitialItems` 推送订阅源当前返回的所有文章。
 
 查看当前群聊的订阅：
 
@@ -29,11 +29,11 @@ feedluna.unsub https://example.com/feed.xml
 启用 Koishi Console 后，侧边栏会出现 FeedLuna RSS 图标。页面提供：
 
 - 所有订阅的查看、搜索、编辑、取消订阅和监听开关。
-- RSS/Atom/RDF Feed 的文章预览；预览不会写入订阅记录、改变已读文章或发送消息。
+- RSS/Atom/RDF 订阅源的文章预览；预览不会写入订阅记录、改变已读文章或发送消息。
 - 手动配置推送目标：平台名称、机器人 ID、频道 ID、可选群组 ID，以及是否在该频道启用监听。
 - 直接在页面编辑请求设置、推送内容和订阅状态，并通过 Koishi 原生配置重载保存。
 
-WebUI 使用选定机器人的 `sendMessage(channelId, content, guildId)` 推送。因此机器人 ID 必须对应运行中的机器人，频道 ID 与群组 ID 由管理员按目标平台填写。一个 RSS Feed 推送到多个目标时，为每个目标分别建立订阅。
+WebUI 使用选定机器人的 `sendMessage(channelId, content, guildId)` 推送。因此机器人 ID 必须对应运行中的机器人，频道 ID 与群组 ID 由管理员按目标平台填写。一个 RSS 订阅源推送到多个目标时，为每个目标分别建立订阅。
 
 群聊命令创建的订阅会自动使用当前会话的平台、机器人、频道和群组信息；首次文章仍发送至输入指令的当前会话。
 
@@ -46,9 +46,10 @@ WebUI 使用选定机器人的 `sendMessage(channelId, content, guildId)` 推送
 | `pollInterval` | `300000` | RSS 检查间隔，单位为毫秒，最短 10 秒。 |
 | `requestTimeout` | `30000` | RSS 请求超时时间，单位为毫秒，最短 1 秒。 |
 | `userAgent` | 桌面 Chrome User-Agent | 请求 RSS 时使用的 User-Agent，默认模拟桌面 Chrome 浏览器。 |
-| `maxEntityExpansions` | `10000` | 单个 Feed 允许处理的最大 XML 实体数量，范围为 100 至 100000。 |
+| `maxXmlEntityExpansions` | `20000` | 用于兼容内容较复杂的订阅源，最小为 100；仅在订阅包含大量特殊符号的订阅源失败时再提高。 |
 | `maxItemsPerUpdate` | `8` | 单次检查合并推送的最大文章数，范围为 1 至 50。 |
 | `includeSummary` | `true` | 是否在推送中包含文章摘要。 |
 | `maxSummaryLength` | `500` | 单篇摘要的最大字符数；设为 `0` 时不发送摘要。 |
-| `pushInitialItems` | `false` | 是否在首次订阅时立即推送当前 Feed 的文章（不建议开启，可能导致刷屏）。 |
+| `pushInitialItems` | `false` | 是否在首次订阅后立即推送最新的一篇文章。 |
+| `pushAllInitialItems` | `false` | 是否在首次订阅时推送订阅源当前返回的所有历史文章，可能产生大量消息。 |
 | `maxSeenIds` | `500` | 每个订阅保留的已推送文章 ID 数量，范围为 50 至 5000。 |

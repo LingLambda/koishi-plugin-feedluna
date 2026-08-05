@@ -11,9 +11,10 @@ export interface Config {
     includeSummary: boolean;
     maxSummaryLength: number;
     pushInitialItems: boolean;
+    pushAllInitialItems: boolean;
     maxSeenIds: number;
     userAgent: string;
-    maxEntityExpansions: number;
+    maxXmlEntityExpansions: number;
 }
 export declare const Config: Schema<Config>;
 export interface FeedSubscription {
@@ -80,6 +81,6 @@ declare module '@koishijs/plugin-console' {
         'feedluna/preview'(url: string): Promise<FeedSnapshot>;
     }
 }
-export declare function parseFeed(xml: string, feedUrl: string, maxSummaryLength?: number, maxEntityExpansions?: number): FeedSnapshot;
+export declare function parseFeed(xml: string, feedUrl: string, maxSummaryLength?: number, maxXmlEntityExpansions?: number): FeedSnapshot;
 export declare function normalizeUrl(source: string): string;
 export declare function apply(ctx: Context, config: Config): void;

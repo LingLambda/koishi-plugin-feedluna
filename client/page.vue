@@ -6,7 +6,7 @@
       <el-tabs v-model="activeTab">
         <el-tab-pane label="订阅管理" name="subscriptions">
           <section class="toolbar">
-            <el-input v-model="search" clearable placeholder="搜索 Feed、RSS 地址或频道" />
+            <el-input v-model="search" clearable placeholder="搜索订阅源、RSS 地址或频道" />
             <el-select v-model="targetFilter" clearable placeholder="全部推送目标">
               <el-option v-for="target in targets" :key="target" :label="target" :value="target" />
             </el-select>
@@ -16,7 +16,7 @@
 
           <k-card v-loading="loadingSubscriptions">
             <el-table :data="filteredSubscriptions" empty-text="暂无 RSS 订阅">
-              <el-table-column label="Feed" min-width="220">
+              <el-table-column label="订阅源" min-width="220">
                 <template #default="{ row }">
                   <strong>{{ row.feedTitle || '未命名 Feed' }}</strong>
                   <a class="rss-url" :href="row.url" target="_blank" rel="noreferrer">{{ row.url }}</a>
@@ -62,7 +62,7 @@
                 <span class="setting-index">01</span>
                 <div>
                   <h2>请求设置</h2>
-                  <p>控制 Feed 抓取频率、网络超时和请求标识。</p>
+                  <p>控制订阅源抓取频率、网络超时和请求标识。</p>
                 </div>
               </div>
               <el-form label-position="top">
@@ -77,9 +77,9 @@
                 <el-form-item label="User-Agent">
                   <el-input v-model="configDraft.userAgent" maxlength="256" show-word-limit />
                 </el-form-item>
-                <el-form-item label="最大 XML 实体数量">
-                  <el-input-number v-model="configDraft.maxEntityExpansions" :min="100" :max="100000" :step="1000" :precision="0" controls-position="right" />
-                  <div class="form-hint">限制单个 Feed 的 XML 实体处理数量，默认 10000。</div>
+                <el-form-item label="XML 展开上限">
+                  <el-input-number v-model="configDraft.maxXmlEntityExpansions" :min="100" :step="1000" :precision="0" controls-position="right" />
+                  <div class="form-hint">默认值为 20000。仅在订阅包含大量特殊符号的订阅源失败时再提高此值。</div>
                 </el-form-item>
               </el-form>
             </section>
@@ -123,12 +123,19 @@
                 <el-form-item label="每个订阅保留的文章 ID">
                   <el-input-number v-model="configDraft.maxSeenIds" :min="50" :max="5000" :precision="0" controls-position="right" />
                 </el-form-item>
-                <div class="switch-row warning-row">
+                <div class="switch-row">
                   <div>
-                    <strong>首次订阅立即推送已有文章</strong>
-                    <span>不建议开启，可能导致刷屏。</span>
+                    <strong>首次订阅后推送最新文章</strong>
+                    <span>开启后会在完成订阅时推送最新的一篇文章。</span>
                   </div>
                   <el-switch v-model="configDraft.pushInitialItems" />
+                </div>
+                <div class="switch-row warning-row">
+                  <div>
+                    <strong>订阅时推送所有历史文章</strong>
+                    <span>会立即推送该订阅源当前返回的所有文章，可能产生大量消息，会覆盖上方的最新文章设置。</span>
+                  </div>
+                  <el-switch v-model="configDraft.pushAllInitialItems" />
                 </div>
               </el-form>
             </section>
@@ -256,15 +263,17 @@ interface FeedLunaConfig {
   pollInterval: number
   requestTimeout: number
   userAgent: string
-  maxEntityExpansions: number
+  maxXmlEntityExpansions: number
   maxItemsPerUpdate: number
   includeSummary: boolean
   maxSummaryLength: number
   pushInitialItems: boolean
+  pushAllInitialItems: boolean
   maxSeenIds: number
 }
 
 const activeTab = ref('subscriptions')
+const RECOMMENDED_MAX_XML_ENTITY_EXPANSIONS = 20000
 const search = ref('')
 const targetFilter = ref('')
 const subscriptions = ref<SubscriptionView[]>([])
@@ -461,6 +470,21 @@ async function saveConfig() {
   if (!configEntry.value || !configDraft.value) return
   const validationError = validateConfig(configDraft.value)
   if (validationError) return message.error(validationError)
+  if (configDraft.value.maxXmlEntityExpansions > RECOMMENDED_MAX_XML_ENTITY_EXPANSIONS) {
+    try {
+      await messageBox.confirm(
+        `当前 XML 展开上限为 ${configDraft.value.maxXmlEntityExpansions}，超过推荐值 ${RECOMMENDED_MAX_XML_ENTITY_EXPANSIONS}。提高该值会增加解析异常内容时的资源消耗，是否继续保存？`,
+        '确认提高 XML 展开上限',
+        {
+          confirmButtonText: '继续保存',
+          cancelButtonText: '取消',
+          type: 'warning',
+        },
+      )
+    } catch {
+      return
+    }
+  }
 
   savingConfig.value = true
   try {
@@ -480,7 +504,7 @@ function validateConfig(config: FeedLunaConfig) {
   if (!natural(config.pollInterval) || config.pollInterval < 10000) return '检查间隔不能小于 10000 毫秒。'
   if (!natural(config.requestTimeout) || config.requestTimeout < 1000) return '请求超时不能小于 1000 毫秒。'
   if (!config.userAgent.trim() || config.userAgent.length > 256) return 'User-Agent 必须为 1 至 256 个字符。'
-  if (!natural(config.maxEntityExpansions) || config.maxEntityExpansions < 100 || config.maxEntityExpansions > 100000) return '最大 XML 实体数量必须在 100 至 100000 之间。'
+  if (!natural(config.maxXmlEntityExpansions) || config.maxXmlEntityExpansions < 100) return 'XML 展开上限不能小于 100。'
   if (!natural(config.maxItemsPerUpdate) || config.maxItemsPerUpdate < 1 || config.maxItemsPerUpdate > 50) return '单次最多合并文章必须在 1 至 50 之间。'
   if (!natural(config.maxSummaryLength) || config.maxSummaryLength > 5000) return '单篇摘要最大字符数必须在 0 至 5000 之间。'
   if (!natural(config.maxSeenIds) || config.maxSeenIds < 50 || config.maxSeenIds > 5000) return '保留文章 ID 数量必须在 50 至 5000 之间。'
@@ -597,6 +621,10 @@ onMounted(() => {
   display: block;
 }
 
+.warning-row strong {
+  color: var(--el-color-warning-dark-2);
+}
+
 .switch-row strong {
   color: var(--el-text-color-primary);
   font-size: 0.875rem;
@@ -607,10 +635,6 @@ onMounted(() => {
   font-size: 0.8125rem;
   line-height: 1.5;
   margin-top: 0.2rem;
-}
-
-.warning-row strong {
-  color: var(--el-color-warning-dark-2);
 }
 
 .settings-actions {

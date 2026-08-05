@@ -12,7 +12,7 @@ export const inject = {
 const SUBSCRIPTION_TABLE = 'feedluna.subscription' as const
 const PREVIEW_ITEM_LIMIT = 20
 const PREVIEW_SUMMARY_LENGTH = 1000
-const DEFAULT_MAX_ENTITY_EXPANSIONS = 10000
+const DEFAULT_MAX_XML_ENTITY_EXPANSIONS = 20000
 
 export interface Config {
   pollInterval: number
@@ -21,9 +21,10 @@ export interface Config {
   includeSummary: boolean
   maxSummaryLength: number
   pushInitialItems: boolean
+  pushAllInitialItems: boolean
   maxSeenIds: number
   userAgent: string
-  maxEntityExpansions: number
+  maxXmlEntityExpansions: number
 }
 
 export const Config: Schema<Config> = Schema.intersect([
@@ -43,11 +44,10 @@ export const Config: Schema<Config> = Schema.intersect([
       .max(256)
       .default('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36')
       .description('请求 RSS 时使用的 User-Agent，默认模拟桌面 Chrome 浏览器。'),
-    maxEntityExpansions: Schema.natural()
+    maxXmlEntityExpansions: Schema.natural()
       .min(100)
-      .max(100000)
-      .default(DEFAULT_MAX_ENTITY_EXPANSIONS)
-      .description('单个 Feed 允许处理的最大 XML 实体数量，用于限制异常内容的资源消耗。'),
+      .default(DEFAULT_MAX_XML_ENTITY_EXPANSIONS)
+      .description('用于兼容内容较复杂的订阅源，默认值为 20000；提高该值会增加解析异常内容时的资源消耗。'),
   }).description('请求设置'),
   Schema.object({
     maxItemsPerUpdate: Schema.natural()
@@ -67,7 +67,10 @@ export const Config: Schema<Config> = Schema.intersect([
   Schema.object({
     pushInitialItems: Schema.boolean()
       .default(false)
-      .description('首次订阅时是否立即推送当前 Feed 中的文章（不建议开启，可能导致刷屏）。'),
+      .description('是否在首次订阅后立即推送最新的一篇文章。'),
+    pushAllInitialItems: Schema.boolean()
+      .default(false)
+      .description('是否在首次订阅时推送订阅源返回的所有历史文章。'),
     maxSeenIds: Schema.natural()
       .min(50)
       .max(5000)
@@ -176,14 +179,13 @@ function readValue(value: unknown): string {
 }
 
 function decodeEntity(entity: string): string {
+  let code: number | undefined
   if (entity.startsWith('&#x') || entity.startsWith('&#X')) {
-    const code = Number.parseInt(entity.slice(3, -1), 16)
-    return Number.isNaN(code) ? entity : String.fromCodePoint(code)
+    code = Number.parseInt(entity.slice(3, -1), 16)
+  } else if (entity.startsWith('&#')) {
+    code = Number.parseInt(entity.slice(2, -1), 10)
   }
-  if (entity.startsWith('&#')) {
-    const code = Number.parseInt(entity.slice(2, -1), 10)
-    return Number.isNaN(code) ? entity : String.fromCodePoint(code)
-  }
+  if (code !== undefined) return Number.isNaN(code) || code > 0x10ffff ? entity : String.fromCodePoint(code)
 
   return {
     amp: '&',
@@ -242,7 +244,8 @@ function resolveLink(link: string, baseUrl: string): string {
 
 function limitText(value: string, length: number): string {
   if (!length) return ''
-  return value.length > length ? `${value.slice(0, length - 3)}...` : value
+  if (value.length <= length) return value
+  return length <= 3 ? value.slice(0, length) : `${value.slice(0, length - 3)}...`
 }
 
 function itemId(title: string, date: string, guid: string, link: string): string {
@@ -255,7 +258,7 @@ export function parseFeed(
   xml: string,
   feedUrl: string,
   maxSummaryLength = 500,
-  maxEntityExpansions = DEFAULT_MAX_ENTITY_EXPANSIONS,
+  maxXmlEntityExpansions = DEFAULT_MAX_XML_ENTITY_EXPANSIONS,
 ): FeedSnapshot {
   const parser = new XMLParser({
     ignoreAttributes: false,
@@ -263,7 +266,7 @@ export function parseFeed(
     textNodeName: '#text',
     cdataPropName: '__cdata',
     trimValues: true,
-    processEntities: { maxTotalExpansions: maxEntityExpansions },
+    processEntities: { maxTotalExpansions: maxXmlEntityExpansions },
   })
   const document = parser.parse(xml) as XmlObject
   const rss = asObject(document.rss)
@@ -275,7 +278,7 @@ export function parseFeed(
   const rawItems = rssChannel?.item ?? rdf?.item ?? atom?.entry
 
   if (!channel || (!rss && !atom && !rdf)) {
-    throw new Error('不是受支持的 RSS 或 Atom Feed')
+    throw new Error('不是受支持的 RSS 或 Atom 订阅源')
   }
 
   const title = toPlainText(channel.title) || feedUrl
@@ -358,13 +361,20 @@ function appendSeenIds(seenIds: string[], newIds: string[], maxSeenIds: number):
 }
 
 function sortItems(items: FeedItem[]): FeedItem[] {
-  return [...items].sort((a, b) => {
-    if (a.publishedAt === undefined || b.publishedAt === undefined) return 0
-    return a.publishedAt - b.publishedAt
-  })
+  return [...items].sort((a, b) => (a.publishedAt ?? 0) - (b.publishedAt ?? 0))
 }
 
-function formatUpdate(feed: FeedSnapshot, items: FeedItem[], includeSummary: boolean): string {
+function getLatestItem(items: FeedItem[]): FeedItem | undefined {
+  let latest: FeedItem | undefined
+  for (const item of items) {
+    if (!latest || (item.publishedAt !== undefined && (latest.publishedAt === undefined || item.publishedAt > latest.publishedAt))) {
+      latest = item
+    }
+  }
+  return latest
+}
+
+function formatUpdate(feed: FeedSnapshot, items: FeedItem[], includeSummary: boolean, heading = `有 ${items.length} 条新文章`): string {
   const entries = items.map(item => {
     const lines = [item.title]
     if (item.link) lines.push(item.link)
@@ -372,7 +382,7 @@ function formatUpdate(feed: FeedSnapshot, items: FeedItem[], includeSummary: boo
     return lines.join('\n')
   })
 
-  return [`【${feed.title}】有 ${items.length} 条新文章`, ...entries].join('\n\n')
+  return [`【${feed.title}】${heading}`, ...entries].join('\n\n')
 }
 
 function toSubscriptionView(subscription: FeedSubscription): SubscriptionView {
@@ -422,7 +432,7 @@ export function apply(ctx: Context, config: Config) {
         'User-Agent': config.userAgent,
       },
     })
-    return parseFeed(String(xml), url, maxSummaryLength, config.maxEntityExpansions)
+    return parseFeed(String(xml), url, maxSummaryLength, config.maxXmlEntityExpansions)
   }
 
   function getBot(target: SubscriptionTarget) {
@@ -444,7 +454,6 @@ export function apply(ctx: Context, config: Config) {
 
   async function createSubscription(
     source: SubscriptionInput,
-    pushInitialItems = config.pushInitialItems,
     sendInitial = sendToTarget,
   ) {
     const url = normalizeUrl(source.url)
@@ -459,12 +468,21 @@ export function apply(ctx: Context, config: Config) {
     }
 
     const feed = await fetchFeed(url)
-    const initialItems = pushInitialItems && target.enabled
-      ? sortItems(feed.items).slice(-config.maxItemsPerUpdate)
-      : []
+    let initialItems: FeedItem[] = []
+    if (target.enabled) {
+      if (config.pushAllInitialItems) {
+        initialItems = sortItems(feed.items)
+      } else if (config.pushInitialItems) {
+        const latestItem = getLatestItem(feed.items)
+        if (latestItem) initialItems = [latestItem]
+      }
+    }
 
     if (initialItems.length) {
-      await sendInitial(target, formatUpdate(feed, initialItems, config.includeSummary))
+      const heading = config.pushAllInitialItems
+        ? `共有 ${initialItems.length} 篇历史文章`
+        : '最新文章'
+      await sendInitial(target, formatUpdate(feed, initialItems, config.includeSummary, heading))
     }
 
     const now = new Date()
@@ -592,13 +610,12 @@ export function apply(ctx: Context, config: Config) {
         })
         const { subscription, initialItemCount } = await createSubscription(
           { ...target, url: sourceUrl },
-          config.pushInitialItems,
           async (_target, content) => {
             const messageIds = await session.send(content)
             if (!messageIds.length) throw new Error('没有可用的机器人可以发送消息')
           },
         )
-        const initialMessage = initialItemCount ? `\n已推送 ${initialItemCount} 篇当前文章。` : ''
+        const initialMessage = initialItemCount ? `\n已推送 ${initialItemCount} 篇文章。` : ''
         return `已订阅 RSS：${subscription.feedTitle}\n后续更新会自动推送到本群。${initialMessage}`
       } catch (error) {
         return `订阅失败：${error instanceof Error ? error.message : 'RSS 地址无效'}`
@@ -653,7 +670,7 @@ export function apply(ctx: Context, config: Config) {
       if (!subscriptions.length) return '本群当前没有 RSS 订阅。'
 
       const lines = subscriptions.map((subscription, index) => {
-        return `${index + 1}. ${subscription.feedTitle || '未命名 Feed'}\n${subscription.url}`
+        return `${index + 1}. ${subscription.feedTitle || '未命名订阅源'}\n${subscription.url}`
       })
       return ['本群当前订阅：', ...lines].join('\n\n')
     })
